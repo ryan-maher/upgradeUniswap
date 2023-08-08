@@ -1,6 +1,8 @@
 pragma solidity >=0.8.13;
 
 import '../interfaces/IUniswapV2Pair.sol';
+import '../UniswapV2Pair.sol';
+import "forge-std/Test.sol";
 
 library UniswapV2Library {
 
@@ -18,7 +20,7 @@ library UniswapV2Library {
                 hex'ff',
                 factory,
                 keccak256(abi.encodePacked(token0, token1)),
-                hex'96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f' // init code hash
+                keccak256(type(UniswapV2Pair).creationCode) // init code hash
             )))));
     }
 
@@ -51,7 +53,7 @@ library UniswapV2Library {
         require(amountOut > 0, 'UniswapV2Library: INSUFFICIENT_OUTPUT_AMOUNT');
         require(reserveIn > 0 && reserveOut > 0, 'UniswapV2Library: INSUFFICIENT_LIQUIDITY');
         uint numerator = reserveIn * (amountOut) * (1000);
-        uint denominator = reserveOut - (amountOut) * (997);
+        uint denominator = (reserveOut - (amountOut)) * (997);
         amountIn = (numerator / denominator) + (1);
     }
 

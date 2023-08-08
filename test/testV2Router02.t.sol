@@ -36,7 +36,11 @@ contract dtt is ERC20 {
 
 }
 
-contract weth9 is WETH9 {}
+contract weth is WETH9 {
+
+    
+
+}
 
 contract test is Test {
 
@@ -46,9 +50,14 @@ contract test is Test {
     address Token0;
     address Token1;
     address pairAddress;
+    address pairAddress2;
+    address WETHPairAddress;
+    address DTTPairAddress;
     
-    weth9 WETH;
+    weth WETH;
+    
     dtt DTT;
+    dtt DTT2;
 
     UniswapV2Router02 router;
     UniswapV2Factory testFactory;
@@ -57,17 +66,13 @@ contract test is Test {
 
     function setUp() public {
         
-        // Set up contracts, factory, and pair
         TokenA = new token0(10000e18);
         TokenB = new token1(10000e18);
 
-        DTT = new dtt(10000e18);
-
-        walletAddress = address(1);
         testFactory = new UniswapV2Factory(address(this));
 
         testFactory.createPair(address(TokenA), address(TokenB));
-
+        testFactory.setFeeTo(address(this));
         pairAddress = testFactory.getPair(address(TokenA), address(TokenB));
 
         address token0Address = address(IUniswapV2Pair(pairAddress).token0());
@@ -75,8 +80,21 @@ contract test is Test {
         Token0 = address(TokenA) == token0Address ? address(TokenA) : address(TokenB);
         Token1 = address(TokenA) == token0Address ? address(TokenB) : address(TokenA);
 
-        WETH = new weth9();
+        DTT = new dtt(10000e18);
+        DTT2 = new dtt(10000e18);
+
+        WETH = new weth();
+
         router = new UniswapV2Router02(address(testFactory), address(WETH));
+        
+        // testFactory.createPair(address(WETH), address(WETHP));
+        // WETHPairAddress = testFactory.getPair(address(WETH), address(WETHP));
+
+        testFactory.createPair(address(DTT), address(WETH));
+        pairAddress2 = testFactory.getPair(address(DTT), address(WETH));
+
+        testFactory.createPair(address(DTT), address(DTT2));
+        DTTPairAddress = testFactory.getPair(address(DTT), address(DTT2));
 
     }
 
@@ -109,8 +127,7 @@ contract test is Test {
 
     function testGetAmountIn() public {
 
-        // Arithmetic over/underflow
-        // assertEq(router.getAmountIn(1,100,100), 2);
+        assertEq(router.getAmountIn(1,100,100), 2);
         
         vm.expectRevert();
         router.getAmountIn(0,100,100);
@@ -125,24 +142,29 @@ contract test is Test {
 
         ERC20(Token0).approve(address(router), UINT256_MAX);
         ERC20(Token1).approve(address(router), UINT256_MAX);
-        // Reverts
-        // router.addLiquidity(
-        //     Token0,
-        //     Token1,
-        //     10000,
-        //     10000,
-        //     0,
-        //     0,
-        //     address(this),
-        //     UINT256_MAX
-        // );
+        router.addLiquidity(
+            Token0,
+            Token1,
+            10000,
+            10000,
+            0,
+            0,
+            address(this),
+            UINT256_MAX
+        );
+
+        address[] memory t0 = new address[](1);
+        t0[0] = Token0;
+
+        vm.expectRevert();
+        router.getAmountsOut(2, t0);
 
         address[] memory t = new address[](2);
         t[0] = Token0;
         t[1] = Token1;
 
-        vm.expectRevert();
-        router.getAmountsOut(2, t);
+        assertEq(router.getAmountsOut(2, t)[0], 2);
+        assertEq(router.getAmountsOut(2, t)[1], 1);
 
     }
 
@@ -150,41 +172,173 @@ contract test is Test {
 
         ERC20(Token0).approve(address(router), UINT256_MAX);
         ERC20(Token1).approve(address(router), UINT256_MAX);
-        // Reverts
-        // router.addLiquidity(
-        //     Token0,
-        //     Token1,
-        //     10000,
-        //     10000,
-        //     0,
-        //     0,
-        //     address(this),
-        //     UINT256_MAX
-        // );
+        router.addLiquidity(
+            Token0,
+            Token1,
+            10000,
+            10000,
+            0,
+            0,
+            address(this),
+            UINT256_MAX
+        );
         
+        address[] memory t0 = new address[](1);
+        t0[0] = Token0;
+
+
+        vm.expectRevert();
+        router.getAmountsIn(1, t0);
+
         address[] memory t = new address[](2);
         t[0] = Token0;
         t[1] = Token1;
 
-        vm.expectRevert();
-        router.getAmountsIn(1, t);
+        assertEq(router.getAmountsIn(1, t)[0], 2);
+        assertEq(router.getAmountsIn(1, t)[1], 1);
 
     }
 
     function testRemoveLiquidityETHSupportingFeeOnTransferTokens() public {
 
         uint256 DTTAmount = 1e18;
-        uint256 ETHAmount = 4e18;
+        uint256 WETHAmount = 4e18;
         
+        // ---- addLiquidity ----
         DTT.approve(address(router), UINT256_MAX);
-        // router.addLiquidityETH(
-        //     address(DTT), 
-        //     DTTAmount, 
-        //     DTTAmount, 
-        //     ETHAmount, 
-        //     address(this), 
+        router.addLiquidityETH{value: WETHAmount}(
+            address(DTT), 
+            DTTAmount, 
+            DTTAmount, 
+            WETHAmount, 
+            address(this), 
+            UINT256_MAX
+        );
+        // ----------------------
+
+        uint256 DTTInPair = DTT.balanceOf(pairAddress2);
+        uint256 WETHInPair = WETH.balanceOf(pairAddress2);
+        uint256 liquidity = IUniswapV2Pair(pairAddress2).balanceOf(address(this));
+        uint256 totalSupply = IUniswapV2Pair(pairAddress2).totalSupply();
+        uint256 NaiveDTTExpected = (DTTInPair * liquidity) / totalSupply;
+        uint256 WETHExpected = (WETHInPair * liquidity) / totalSupply;
+
+        IUniswapV2Pair(pairAddress2).approve(address(router), UINT256_MAX);
+        // Reverts when using IWETH functions
+        // router.removeLiquidityETHSupportingFeeOnTransferTokens(
+        //     address(DTT),
+        //     liquidity,
+        //     NaiveDTTExpected,
+        //     WETHExpected,
+        //     address(this),
         //     UINT256_MAX
         // );
+
+    }
+
+    // ETH -> DTT
+    function testSwapExactETHForTokensSupportingFeeOnTransferTokens() public {
+
+        uint256 DTTAmount = 10e18;
+        DTTAmount = DTTAmount * 1000 / 99;
+        uint256 ETHAmount = 5e18;
+        uint256 swapAmount = 1e18;
+
+        // ---- addLiquidity ----
+        DTT.approve(address(router), UINT256_MAX);
+        router.addLiquidityETH{value: ETHAmount}(
+            address(DTT), 
+            DTTAmount, 
+            DTTAmount, 
+            ETHAmount, 
+            address(this), 
+            UINT256_MAX
+        );
+        // ----------------------
+
+        address[] memory a = new address[](2);
+        a[0] = address(WETH);
+        a[1] = address(DTT);
+
+        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: swapAmount}(
+            0,
+            a,
+            address(this),
+            UINT256_MAX
+        );
+
+    }
+
+    // DTT -> ETH
+    function testSwapExactTokensForETHSupportingFeeOnTransferTokens() public {
+
+        uint256 DTTAmount = 5e18;
+        DTTAmount = DTTAmount * 1000 / 99;
+        uint256 ETHAmount = 10e18;
+        uint256 swapAmount = 1e18;
+
+        // ---- addLiquidity ----
+        DTT.approve(address(router), UINT256_MAX);
+        router.addLiquidityETH{value: ETHAmount}(
+            address(DTT), 
+            DTTAmount, 
+            DTTAmount, 
+            ETHAmount, 
+            address(this), 
+            UINT256_MAX
+        );
+        // ----------------------
+
+        address[] memory a = new address[](2);
+        a[0] = address(DTT);
+        a[1] = address(WETH);
+
+        DTT.approve(address(router), UINT256_MAX);
+        // Reverts when using IWETH functions
+        // router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+        //     swapAmount,
+        //     0,
+        //     a,
+        //     address(this),
+        //     UINT256_MAX
+        // );
+
+    }
+
+    function testSwapExactTokensForTokensSupportingFeeOnTransferTokens() public {
+
+        uint256 DTTAmount = 5e18;
+        DTTAmount = DTTAmount * 1000 / 99;
+        uint256 DTT2Amount = 5e18;
+        uint256 amountIn = 1e18;
+
+        // ---- addLiquidity ----
+        DTT.approve(address(router), UINT256_MAX);
+        DTT2.approve(address(router), UINT256_MAX);
+        router.addLiquidity(
+            address(DTT),
+            address(DTT2),
+            DTTAmount,
+            DTT2Amount,
+            DTTAmount,
+            DTT2Amount,
+            address(this),
+            UINT256_MAX
+        );
+        // ----------------------
+
+        address[] memory a = new address[](2);
+        a[0] = address(DTT);
+        a[1] = address(DTT2);
+
+        DTT.approve(address(router), UINT256_MAX);
+        router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            amountIn,
+            0,
+            a,
+            address(this),
+            UINT256_MAX
+        );
 
     }
 
